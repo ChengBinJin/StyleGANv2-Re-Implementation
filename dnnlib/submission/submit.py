@@ -7,7 +7,18 @@
 
 """Submit a function to be run either locally or in a computing cluster."""
 
+from enum import Enum
+
 from .. import util
+from . import internal
+
+class SubmitTarget(Enum):
+    """The target where the function should be run.
+
+    LOCAL: Run it locally
+    """
+    LOCAL = 1
+
 
 class SubmitConfig(util.EasyDict):
     """Strongly typed config dict needed to submit runs.
@@ -29,7 +40,7 @@ class SubmitConfig(util.EasyDict):
         user_name: Automatically populated value during submit. Can be set by the user which will then override the automatic value.
         task_name: Automatically populated value during submit.
         host_name: Automatically populated value during submit.
-        Platform_extra: Automatically populated values during submit. Used by various dnnlib libraries such as the DataReader class.
+        platform_extras: Automatically populated values during submit. Used by various dnnlib libraries such as the DataReader class.
     """
     def __init__(self):
         super().__init__()
