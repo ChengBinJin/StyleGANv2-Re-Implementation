@@ -4,3 +4,5 @@
 # To view a copy of thi license, visit
 # https://nvlabs.github.io/stylegan2/license.html
 # Cheng-Bin Jin re-implementation.
+
+from . import submit
