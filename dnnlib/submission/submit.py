@@ -7,7 +7,9 @@
 
 """Submit a function to be run either locally or in a computing cluster."""
 
-class SubmitConfig():
+from .. import util
+
+class SubmitConfig(util.EasyDict):
     """Strongly typed config dict needed to submit runs.
 
     Attributes:
@@ -30,4 +32,29 @@ class SubmitConfig():
         Platform_extra: Automatically populated values during submit. Used by various dnnlib libraries such as the DataReader class.
     """
     def __init__(self):
+        super().__init__()
 
+        # run (set these)
+        self.run_dir_root = ""  # should always be passed through get_path_from_template
+        self.run_desc = ""
+        self.run_dir_ignore = ["__pycache__", "*.pyproj", "*.sln", "*.suo", ".cache", ".idea", ".vs", ".vscode", "_cudacache"]
+        self.run_dir_extra_files = []
+
+        # submit (set these)
+        self.submit_target = SubmitTarget.LOCAL
+        self.num_gpus = 1
+        self.print_info = False
+        self.nvprof = False
+        self.local = internal.local.TargetOptions()
+        self.datasets = []
+
+        # (automatically populated)
+        self.run_id = None
+        self.run_name = None
+        self.run_dir = None
+        self.run_func_name = None
+        self.run_func_kwargs = None
+        self.user_name = None
+        self.task_name = None
+        self.host_name = None
+        self.platform_extras = PlatformExtras()
