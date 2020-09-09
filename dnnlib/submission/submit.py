@@ -8,7 +8,9 @@
 """Submit a function to be run either locally or in a computing cluster."""
 
 import copy
+import pathlib
 import re
+import platform
 from enum import Enum
 
 from .. import util
@@ -22,6 +24,13 @@ class SubmitTarget(Enum):
     LOCAL = 1
 
 
+class PathType(Enum):
+    """Ditermines in which format should a path be formatted..."""
+    WINDOWS = 1
+    LINUX = 2
+    AUTO = 3
+
+
 class PlatformExtras:
     """A mixed bag of values used by dnnlib heuristics.
 
@@ -33,8 +42,6 @@ class PlatformExtras:
     def __init__(self):
         self.data_reader_buffer_size = 1 << 30  # 1GB
         self.data_reader_process_count = 0      # single threaded default
-
-
 
 
 class SubmitConfig(util.EasyDict):
@@ -86,6 +93,28 @@ class SubmitConfig(util.EasyDict):
         self.task_name = None
         self.host_name = None
         self.platform_extras = PlatformExtras()
+
+
+def get_path_from_template(path_template: str, path_type: PathType = PathType.AUTO) -> str:
+    """Replace tags in the given path template and return either Windows or Linux formatted path."""
+    # automatically select path type adepending on running OS
+    if path_type == PathType.AUTO:
+        if platform.system() == "Windows":
+            path_type = PathType.WINDOWS
+        elif platform.system() == "Linux":
+            path_type = PathType.LINUX
+        else:
+            raise RuntimeError("Unknown platform")
+
+    path_template = path_template.replace("<USERNAME>", get_user_name())
+
+    # return correctly formatted pat
+    if path_type == PathType.WINDOWS:
+        return str(pathlib.PureWindowsPath(path_template))
+    elif path_type == PathType.LINUX:
+        return str(pathlib.PurePosixPath(path_template))
+    else:
+        raise RuntimeError("Unknown platform")
 
 
 def get_template_from_path(path: str) -> str:
