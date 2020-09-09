@@ -88,6 +88,19 @@ class SubmitConfig(util.EasyDict):
         self.platform_extras = PlatformExtras()
 
 
+def get_template_from_path(path: str) -> str:
+    """Convert a normal path back to its template representation."""
+    path = path.replace("\\", "/")
+    return path
+
+
+def convert_path(path: str, path_type: PathType = PathType.AUTO) -> str:
+    """Convert a normal path to template and the convert it back to a normal path with given path type."""
+    path_template = get_template_from_path(path)
+    path = get_path_from_template(path_template, path_type)
+    return path
+
+
 def submit_run(submit_config: SubmitConfig, run_func_name: str, **run_func_kwargs) -> None:
     """Create a run dir, gather files related to the run, copy files to the run dir, and launch the run in appropriate place."""
     submit_config = copy.deepcopy(submit_config)
