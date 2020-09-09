@@ -7,6 +7,8 @@
 
 """Submit a function to be run either locally or in a computing cluster."""
 
+import copy
+import re
 from enum import Enum
 
 from .. import util
@@ -18,6 +20,21 @@ class SubmitTarget(Enum):
     LOCAL: Run it locally
     """
     LOCAL = 1
+
+
+class PlatformExtras:
+    """A mixed bag of values used by dnnlib heuristics.
+
+    Attributes:
+
+        data_reader_buffer_size: Used by DataReader to size internal shared memory buffers.
+        data_reader_process_count: Number of worker processes to spawn (zero for single thread operation)
+    """
+    def __init__(self):
+        self.data_reader_buffer_size = 1 << 30  # 1GB
+        self.data_reader_process_count = 0      # single threaded default
+
+
 
 
 class SubmitConfig(util.EasyDict):
@@ -69,3 +86,41 @@ class SubmitConfig(util.EasyDict):
         self.task_name = None
         self.host_name = None
         self.platform_extras = PlatformExtras()
+
+
+def submit_run(submit_config: SubmitConfig, run_func_name: str, **run_func_kwargs) -> None:
+    """Create a run dir, gather files related to the run, copy files to the run dir, and launch the run in appropriate place."""
+    submit_config = copy.deepcopy(submit_config)
+
+    submit_target = submit_config.submit_target
+    farm = None
+    if submit_target == SubmitTarget.LOCAL:
+        farm = internal.local.Target()
+    assert farm is not None  # unknown target
+
+    # Disallow submitting jobs with zero num_gpus.
+    if (submit_config.num_gpus is None) or (submit_config.num_gpus == 0):
+        raise RuntimeError("submit_config.num_gpus must be set to a non-zero value")
+
+    if submit_config.user_name is None:
+        submit_config.user_name = get_user_name()
+
+    submit_config.run_func_name = run_func_name
+    submit_config.run_func_kwargs = run_func_kwargs
+
+    #---------------------------------------------------------------------------------------
+    # Prepare submission by populating the run dir
+    #---------------------------------------------------------------------------------------
+    host_run_dir = _create_run_dir_local(submit_config)
+
+    submit_config.task_name = "{0}-{1:05d}-{2}".format(submit_config.user_name, submit_config.run_id, submit_config.run_desc)
+    docker_valid_name_regex = "^[a-zA-Z0-9][a-zA-Z0-9_.-]+$"
+    if not re.match(docker_valid_name_regex, submit_config.task_name):
+        raise RuntimeError("Invalid task name. Probable reason: unacceptable characters in your submit_config.run_desc. "
+                           "Task name must be accepted by the following regex: " + docker_valid_name_regex + ", got " +
+                           submit_config.task_name)
+
+    # Farm specific preparations for a submit
+    farm.finalize_submit_config(submit_config, host_run_dir)
+    _populate_run_dir(submit_config, host_run_dir)
+    return farm.submit(submit_config, host_run_dir)

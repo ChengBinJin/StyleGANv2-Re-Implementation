@@ -73,7 +73,18 @@ def main():
         sys.exit(1)
 
     sc = dnnlib.SubmitConfig()
+    sc.num_gpus = 1
+    sc.submit_target = dnnlib.SubmitTarget.LOCAL
+    sc.local.do_not_copy_source_files = True
+    sc.run_dir_root = kwargs.pop('result_dir')
+    sc.run_desc = subcmd
 
+    func_name_map = {
+        'generate-images': 'run_generator.generate_images',
+        'style-mixing-example': 'run_generator.style_mixing_example'
+    }
+    print(func_name_map[subcmd])
+    dnnlib.submit_run(sc, func_name_map[subcmd], **kwargs)
 
 #-----------------------------------------------------------------------------------------------------------------------
 
