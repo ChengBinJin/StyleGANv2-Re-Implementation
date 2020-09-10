@@ -12,6 +12,8 @@ import copy
 import pathlib
 import re
 import platform
+import pickle
+import pprint
 from enum import Enum
 
 from .. import util
@@ -167,6 +169,50 @@ def _create_run_dir_local(submit_config: SubmitConfig) -> str:
     os.makedirs(run_dir)
 
     return run_dir
+
+
+def _get_next_run_id_local(run_dir_root: str) -> int:
+    """Reads all directory names in a given directory (non-recursive) and returns the next (increasing) run id. Assumes IDs are numbers at the start of the directory names."""
+    dir_names = [d for d in os.listdir(run_dir_root) if os.path.isdir(os.path.join(run_dir_root, d))]
+    r = re.compile("^\\d+")  # match one or more digits at the start of the string
+    run_id = 0
+
+    for dir_name in dir_names:
+        m = r.match(dir_name)
+
+        if m is not None:
+            i = int(m.group())
+            run_id = max(run_id, i + 1)
+
+    return run_id
+
+
+def _populate_run_dir(submit_config: SubmitConfig, run_dir: str) -> None:
+    """Copy all necessary files into the run dir. Assumes that the dir exists, is local, and is writable."""
+    pickle.dump(submit_config, open(os.path.join(run_dir, "submit_config.pkl"), "wb"))
+    with open(os.path.join(run_dir, "submit_config.txt"), "w") as f:
+        pprint.pprint(submit_config, stream=f, indent=4, width=200, compact=False)
+
+    if (submit_config.submit_target == SubmitTarget.LOCAL) and submit_config.local.do_not_copy_source_files:
+        return
+
+    files = []
+
+    run_func_module_dir_path = util.get_module_dir_by_obj_name(submit_config.run_func_name)
+    assert '.' in submit_config.run_func_name
+    for _idx in range(submit_config.run_func_name.count('.') - 1):
+        run_func_module_dir_path = os.path.dirname(run_func_module_dir_path)
+    files += util.list_dir_recursively_with_ignore(run_func_module_dir_path, ignores=submit_config.run_dir_ignore, add_base_to_relative=False)
+
+    dnnlib_module_dir_path = util.get_module_dir_by_obj_name("dnnlib")
+    files += util.list_dir_recursively_with_ignore(dnnlib_module_dir_path, ignores=submit_config.run_dir_ignore, add_base_to_relative=False)
+
+    files += submit_config.run_dir_extra_files
+
+    files = [(f[0], os.path.join(run_dir, "src", f[1])) for f in files]
+    files += [(os.path.join(dnnlib_module_dir_path, "submission", "internal", "run.py"), os.path.join(run_dir, "run.py"))]
+
+    util.copy_files_and_create_dirs(files)
 
 
 def submit_run(submit_config: SubmitConfig, run_func_name: str, **run_func_kwargs) -> None:
