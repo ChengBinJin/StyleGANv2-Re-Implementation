@@ -7,6 +7,7 @@
 
 """Submit a function to be run either locally or in a computing cluster."""
 
+import os
 import copy
 import pathlib
 import re
@@ -42,6 +43,9 @@ class PlatformExtras:
     def __init__(self):
         self.data_reader_buffer_size = 1 << 30  # 1GB
         self.data_reader_process_count = 0      # single threaded default
+
+
+_user_name_override = None
 
 
 class SubmitConfig(util.EasyDict):
@@ -128,6 +132,41 @@ def convert_path(path: str, path_type: PathType = PathType.AUTO) -> str:
     path_template = get_template_from_path(path)
     path = get_path_from_template(path_template, path_type)
     return path
+
+
+def get_user_name():
+    """Get the current user name."""
+    if _user_name_override is not None:
+        return _user_name_override
+    elif platform.system() == "Windows":
+        return os.getlogin()
+    elif platform.system() == "Linux":
+        try:
+            import pwd
+            return pwd.getpwuid(os.geteuid()).pw_name
+        except:
+            return "unknown"
+    else:
+        raise RuntimeError("Unknown platform")
+
+
+def _create_run_dir_local(submit_config: SubmitConfig) -> str:
+    """Create a new run dir with increasing ID number at the start."""
+    run_dir_root = get_path_from_template(submit_config.run_dir_root, PathType.AUTO)
+
+    if not os.path.exists(run_dir_root):
+        os.makedirs(run_dir_root)
+
+    submit_config.run_id = _get_next_run_id_local(run_dir_root)
+    submit_config.run_name = "{0:05d}-{1}".format(submit_config.run_id, submit_config.run_desc)
+    run_dir = os.path.join(run_dir_root, submit_config.run_name)
+
+    if os.path.exists(run_dir):
+        raise RuntimeError("The run dir already exists! ({0})".format(run_dir))
+
+    os.makedirs(run_dir)
+
+    return run_dir
 
 
 def submit_run(submit_config: SubmitConfig, run_func_name: str, **run_func_kwargs) -> None:
