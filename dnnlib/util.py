@@ -7,6 +7,7 @@
 
 import os
 import sys
+import shutil
 import re
 import types
 import inspect
@@ -118,3 +119,16 @@ def list_dir_recursively_with_ignore(dir_path: str, ignores: List[str] = None, a
         result += zip(absolute_paths, relative_paths)
 
     return result
+
+
+def copy_files_and_create_dirs(files: List[Tuple[str, str]]) -> None:
+    """Takes in a list of tuples of (src, dst) paths and copies files.
+    Will create all necessary directories."""
+    for file in files:
+        target_dir_name = os.path.dirname(file[1])
+
+        # will create all intermediate-level directories
+        if not os.path.exists(target_dir_name):
+            os.makedirs(target_dir_name)
+
+        shutil.copyfile(file[0], file[1])

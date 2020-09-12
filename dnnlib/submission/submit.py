@@ -8,12 +8,17 @@
 """Submit a function to be run either locally or in a computing cluster."""
 
 import os
+import sys
 import copy
+import time
 import pathlib
+import inspect
 import re
+import shutil
 import platform
 import pickle
 import pprint
+import traceback
 from enum import Enum
 
 from .. import util
@@ -213,6 +218,60 @@ def _populate_run_dir(submit_config: SubmitConfig, run_dir: str) -> None:
     files += [(os.path.join(dnnlib_module_dir_path, "submission", "internal", "run.py"), os.path.join(run_dir, "run.py"))]
 
     util.copy_files_and_create_dirs(files)
+
+
+def run_wrapper(submit_config: SubmitConfig) -> None:
+    """Wrap the actual run function call for handling logging, exceptions, typing, etc."""
+    is_local = submit_config.submit_target == SubmitTarget.LOCAL
+
+    # when running locally, redirect stderr to stdout, log stdout to a file, and force flushing
+    if is_local:
+        logger = util.Logger(file_name=os.path.join(submit_config.run_dir, "log.txt"), file_mode="w", should_flush=True)
+    else:   # when running in a cluster, redirect stderr to stdout, and just force flushing (log writing is handled by run.sh)
+        logger = util.Logger(file_name=None, should_flush=True)
+
+    import dnnlib
+    dnnlib.submit_config = submit_config
+
+    exit_with_errcode = False
+    try:
+        print("dnnlib: Running {0}() on {1}...".format(submit_config.run_func_name, submit_config.host_name))
+        start_time = time.time()
+
+        run_func_obj = util.get_obj_by_name(submit_config.run_func_name)
+        assert callable(run_func_obj)
+        sig = inspect.signature(run_func_obj)
+        if 'submit_config' in sig.parameters:
+            run_func_obj(submit_config=submit_config, **submit_config.run_func_kwargs)
+        else:
+            run_func_obj(**submit_config.run_func_kwargs)
+
+        print("dnnlib: Finished {0}() in {1}.".format(submit_config.run_func_name, util.format_time(time.time() - start_time)))
+    except:
+        if is_local:
+            raise
+        else:
+            traceback.print_exc()
+
+            log_src = os.path.join(submit_config.run_dir, "log.txt")
+            log_dst = os.path.join(get_path_from_template(submit_config.run_dir_root), "{0}-error.txt".format(submit_config.run_name))
+            shutil.copyfile(log_src, log_dst)
+
+            # Defer sys.exit(1) to happen after we close the logs and create a _finished.txt
+            exit_with_errcode = True
+    finally:
+        open(os.path.join(submit_config.run_dir, "_finished.txt"), "w").close()
+
+    dnnlib.RunContext.get().close()
+    dnnlib.submit_config = None
+    logger.close()
+
+    # If we hit an error, get out of the script now and signal the error
+    # to whatever process that started this script.
+    if exit_with_errcode:
+        sys.exit(1)
+
+    return submit_config
 
 
 def submit_run(submit_config: SubmitConfig, run_func_name: str, **run_func_kwargs) -> None:
