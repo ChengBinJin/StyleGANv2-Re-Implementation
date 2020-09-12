@@ -34,6 +34,62 @@ class EasyDict(dict):
         del self[name]
 
 
+class Logger(object):
+    """Redirect stderr to stdout, optionally print stdout to a file, and optionally force flushing on both stdout and the file."""
+
+    def __init__(self, file_name: str = None, file_mode: str = "w", should_flush: bool = True):
+        self.file = None
+
+        if file_name is not None:
+            self.file = open(file_name, file_mode)
+
+        self.should_flush = should_flush
+        self.stdout = sys.stdout
+        self.stderr = sys.stderr
+
+        sys.stdout = self
+        sys.stderr = self
+
+    def __enter__(self) -> "Logger":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+        self.close()
+
+    def write(self, text: str) -> None:
+        """Write text to shdout (and a file) and optionally flush."""
+        if len(text) == 0:  # workaround for a bug in VSCode debugger: sts.stdout.write(''); sys.stdout.flush() => crash
+            return
+
+        if self.file is not None:
+            self.file.write(text)
+
+        self.stdout.write(text)
+
+        if self.should_flush:
+            self.flush()
+
+    def flush(self) -> None:
+        """Flush written text to both stdout and a file, if open."""
+        if self.file is not None:
+            self.file.flush()
+
+        self.stdout.flush()
+
+    def close(self) -> None:
+        """Flush, close possible files, and remove stdout/stderr mirroring."""
+        self.flush()
+
+        # if using multiple loggers, prevent closing in wrong order
+        if sys.stdout is self:
+            sys.stdout = self.stdout
+        if sys.stderr is self:
+            sys.stderr = self.stderr
+
+        if self.file is not None:
+            self.file.close()
+
+
 def get_module_from_obj_name(obj_name: str) -> Tuple[types.ModuleType, str]:
     """Searches for the underlying module behind the name to some python object.
     Returns the module and the object name (original name with module part removed)."""
@@ -80,6 +136,12 @@ def get_obj_from_module(module: types.ModuleType, obj_name: str) -> Any:
     for part in obj_name.split("."):
         obj = getattr(obj, part)
     return obj
+
+
+def get_obj_by_name(name: str) -> Any:
+    """Finds the python object with the given name."""
+    module, obj_name = get_module_from_obj_name(name)
+    return get_obj_from_module(module, obj_name)
 
 
 def get_module_dir_by_obj_name(obj_name: str) -> str:
